@@ -10,36 +10,30 @@ Replicates the [HF Space](https://huggingface.co/spaces/linoyts/Qwen-Image-Edit-
 | Transformer | `linoyts/Qwen-Image-Edit-Rapid-AIO` | Lightning-distilled, 4-step |
 | LoRA | `dx8152/Qwen-Edit-2509-Multiple-angles` | Fused at **scale 1.25** |
 
-## Architecture
+## How It Works
 
-- **Docker image** is lightweight (~5GB) — just code + Python deps
-- **Model weights** (~25GB) are downloaded on first cold start and cached on a **RunPod Network Volume**
+- **Docker image** includes all model weights (~30GB) baked in at build time
 - **GitHub Action** auto-builds and pushes to `ghcr.io` on every push to `main`
+- **Cold starts** load models from local disk in ~30s (no network download)
 
 ## Deploy
 
 ### 1. Push to GitHub
 
-Commit and push. The GitHub Action (`.github/workflows/build-runpod-qwen-camera.yml`) will auto-build and push the image to `ghcr.io/YOUR_ORG/qwen-camera-control:latest`.
+The GitHub Action auto-builds and pushes to:
+```
+ghcr.io/realimposter/qwen-camera-worker:latest
+```
 
-### 2. Create a RunPod Network Volume
-
-1. Go to [RunPod Console → Storage](https://www.runpod.io/console/user/storage)
-2. Create a **Network Volume** (50GB minimum, same region as your endpoint)
-3. Note the volume ID
-
-### 3. Create a RunPod Serverless Endpoint
+### 2. Create RunPod Serverless Endpoint
 
 1. Go to [RunPod Console → Serverless](https://www.runpod.io/console/serverless)
-2. **New Endpoint** → Container Image: `ghcr.io/YOUR_ORG/qwen-camera-control:latest`
-3. **GPU**: A6000 (48GB) or L40S
-4. **Network Volume**: Attach the volume you created
-5. **Workers**: Active = 0, Max = 1+
-6. **Container Disk**: 20GB (for pip packages)
+2. **New Endpoint** → Image: `ghcr.io/realimposter/qwen-camera-worker:latest`
+3. **GPU**: A6000 or L40S (48GB VRAM)
+4. **Active Workers**: 0, **Max Workers**: 1+
+5. **Container Disk**: 50GB
 
-> ⚠️ First cold start will take 5-10 min while models download to the volume. Subsequent starts are fast (~30s).
-
-### 4. Test
+### 3. Test
 
 ```bash
 curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
@@ -48,10 +42,7 @@ curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
   -d '{
     "input": {
       "image": "https://example.com/portrait.jpg",
-      "rotate_degrees": 45,
-      "move_forward": 0,
-      "vertical_tilt": 0,
-      "use_wide_angle": false
+      "rotate_degrees": 45
     }
   }'
 ```
@@ -70,7 +61,6 @@ curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
 | `prompt` | string | "" | Extra styling prompt |
 | `seed` | int | random | RNG seed |
 | `num_inference_steps` | int | 4 | Denoising steps |
-| `output_format` | string | "webp" | "webp", "png", or "jpeg" |
 
 ### Output
 

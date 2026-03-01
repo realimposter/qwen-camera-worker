@@ -1,8 +1,8 @@
 # =============================================================================
 # RunPod Serverless Worker: Qwen Camera Control (Multi-Angle)
 # =============================================================================
-# LIGHTWEIGHT image (~5GB) — model weights are stored on RunPod Network Volume.
-# First cold start downloads ~25GB to /runpod-volume, then cached for reuse.
+# Models are baked into the image at build time (~30GB total).
+# Cold starts load from local disk in ~30s.
 # =============================================================================
 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
-# Upgrade pip
 RUN python -m pip install --upgrade pip setuptools wheel
 
 WORKDIR /app
@@ -37,7 +36,41 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY handler.py .
 COPY qwenimage/ qwenimage/
 
-# Network Volume mount point (configured in RunPod endpoint settings)
-ENV VOLUME_PATH=/runpod-volume
+# Pre-download all model weights into HF cache at build time
+# This makes the image ~30GB but eliminates download time at runtime
+RUN python -c "
+import torch
+
+# Try built-in diffusers first
+try:
+    from diffusers import QwenImageEditPlusPipeline
+    from diffusers.models import QwenImageTransformer2DModel
+except ImportError:
+    from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
+    from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
+
+print('[build] Downloading transformer...')
+transformer = QwenImageTransformer2DModel.from_pretrained(
+    'linoyts/Qwen-Image-Edit-Rapid-AIO',
+    subfolder='transformer',
+    torch_dtype=torch.bfloat16,
+)
+
+print('[build] Downloading base pipeline...')
+pipe = QwenImageEditPlusPipeline.from_pretrained(
+    'Qwen/Qwen-Image-Edit-2509',
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
+)
+
+print('[build] Downloading LoRA...')
+pipe.load_lora_weights(
+    'dx8152/Qwen-Edit-2509-Multiple-angles',
+    weight_name='镜头转换.safetensors',
+    adapter_name='angles',
+)
+
+print('[build] All models cached. Done!')
+"
 
 CMD ["python", "-u", "handler.py"]

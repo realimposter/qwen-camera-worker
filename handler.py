@@ -7,8 +7,7 @@ Replicates the exact HF Space setup from linoyts/Qwen-Image-Edit-Angles:
   - LoRA: dx8152/Qwen-Edit-2509-Multiple-angles (fused at scale 1.25)
   - Bilingual Chinese+English camera prompt construction
 
-Models are cached on RunPod Network Volume at /runpod-volume/models/
-to avoid re-downloading ~25GB on every cold start.
+Models are baked into the Docker image at build time.
 """
 
 import os
@@ -26,14 +25,6 @@ from PIL import Image
 # Configuration
 # =============================================================================
 
-# RunPod Network Volume mount point
-VOLUME_PATH = os.environ.get("VOLUME_PATH", "/runpod-volume")
-MODEL_CACHE_DIR = os.path.join(VOLUME_PATH, "models", "qwen-camera-control")
-
-# HuggingFace cache directory → point to network volume
-os.environ["HF_HOME"] = os.path.join(VOLUME_PATH, "huggingface")
-os.environ["TRANSFORMERS_CACHE"] = os.path.join(VOLUME_PATH, "huggingface")
-
 BASE_MODEL = "Qwen/Qwen-Image-Edit-2509"
 TRANSFORMER_MODEL = "linoyts/Qwen-Image-Edit-Rapid-AIO"
 LORA_MODEL = "dx8152/Qwen-Edit-2509-Multiple-angles"
@@ -49,9 +40,7 @@ MAX_SEED = np.iinfo(np.int32).max
 # =============================================================================
 
 def load_pipeline():
-    """Load the pipeline, downloading models to network volume if needed."""
-    from diffusers import FlowMatchEulerDiscreteScheduler
-
+    """Load the pipeline with baked-in model weights."""
     # Try importing from diffusers first (latest git version)
     try:
         from diffusers import QwenImageEditPlusPipeline
@@ -62,10 +51,6 @@ def load_pipeline():
         from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
         print("[startup] Using vendored qwenimage classes")
 
-    # Ensure cache directory exists
-    os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
-
-    print(f"[startup] HF_HOME = {os.environ['HF_HOME']}")
     print(f"[startup] Loading transformer from {TRANSFORMER_MODEL} ...")
     start = time.time()
 
@@ -165,8 +150,7 @@ def load_image_from_input(image_input: str) -> Image.Image:
         response.raise_for_status()
         return Image.open(io.BytesIO(response.content)).convert("RGB")
     else:
-        # Assume base64
-        if "," in image_input:  # data:image/...;base64,XXXX
+        if "," in image_input:
             image_input = image_input.split(",", 1)[1]
         image_bytes = base64.b64decode(image_input)
         return Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -184,30 +168,9 @@ def image_to_base64(image: Image.Image, format: str = "WEBP", quality: int = 95)
 # =============================================================================
 
 def handler(job):
-    """Process a camera control image edit job.
-
-    Input schema:
-        - image (str, required): URL or base64-encoded image
-        - rotate_degrees (float, optional): Camera rotation in degrees. Default: 0
-        - move_forward (float, optional): Zoom/dolly. 0=none, 5=forward, 10=close-up. Default: 0
-        - vertical_tilt (float, optional): -1=bird's-eye, 0=level, 1=worm's-eye. Default: 0
-        - use_wide_angle (bool, optional): Wide-angle lens effect. Default: false
-        - prompt (str, optional): Additional styling prompt appended after camera directive
-        - seed (int, optional): RNG seed for reproducibility. Default: random
-        - num_inference_steps (int, optional): Denoising steps. Default: 4
-        - true_guidance_scale (float, optional): CFG scale. Default: 1.0
-        - output_format (str, optional): "webp", "png", or "jpeg". Default: "webp"
-        - output_quality (int, optional): Quality for lossy formats. Default: 95
-
-    Output:
-        - image_base64 (str): Base64-encoded output image
-        - seed (int): Seed used for generation
-        - prompt (str): Full prompt sent to the model (for debugging)
-        - format (str): Output format used
-    """
+    """Process a camera control image edit job."""
     job_input = job["input"]
 
-    # --- Parse inputs ---
     image_input = job_input.get("image")
     if not image_input:
         return {"error": "Missing required 'image' input (URL or base64)"}
@@ -218,43 +181,39 @@ def handler(job):
     use_wide_angle = bool(job_input.get("use_wide_angle", False))
     extra_prompt = job_input.get("prompt", "")
     seed = job_input.get("seed", None)
-    randomize_seed = seed is None
     num_inference_steps = int(job_input.get("num_inference_steps", 4))
     true_guidance_scale = float(job_input.get("true_guidance_scale", 1.0))
     output_format = job_input.get("output_format", "webp").upper()
     output_quality = int(job_input.get("output_quality", 95))
 
-    # Map format names
     format_map = {"WEBP": "WEBP", "PNG": "PNG", "JPEG": "JPEG", "JPG": "JPEG"}
     output_format = format_map.get(output_format, "WEBP")
 
-    # --- Build prompt ---
+    # Build prompt
     camera_prompt = build_camera_prompt(rotate_degrees, move_forward, vertical_tilt, use_wide_angle)
 
     if camera_prompt == "no camera movement" and not extra_prompt:
-        return {"error": "No camera movement or prompt specified. Nothing to do."}
+        return {"error": "No camera movement or prompt specified."}
 
-    # Combine camera prompt with optional extra styling prompt
     if extra_prompt:
         full_prompt = f"{camera_prompt} {extra_prompt}" if camera_prompt != "no camera movement" else extra_prompt
     else:
         full_prompt = camera_prompt
 
     print(f"[handler] Prompt: {full_prompt}")
-    print(f"[handler] Params: rotate={rotate_degrees}, forward={move_forward}, tilt={vertical_tilt}, wide={use_wide_angle}")
 
-    # --- Load image ---
+    # Load image
     try:
         input_image = load_image_from_input(image_input)
     except Exception as e:
         return {"error": f"Failed to load image: {str(e)}"}
 
-    # --- Seed ---
-    if randomize_seed:
+    # Seed
+    if seed is None:
         seed = random.randint(0, MAX_SEED)
     generator = torch.Generator(device=DEVICE).manual_seed(int(seed))
 
-    # --- Inference ---
+    # Inference
     try:
         result = pipe(
             image=[input_image],
@@ -267,7 +226,6 @@ def handler(job):
     except Exception as e:
         return {"error": f"Inference failed: {str(e)}"}
 
-    # --- Encode output ---
     image_b64 = image_to_base64(result, format=output_format, quality=output_quality)
 
     return {
@@ -277,9 +235,5 @@ def handler(job):
         "format": output_format.lower(),
     }
 
-
-# =============================================================================
-# Entry Point
-# =============================================================================
 
 runpod.serverless.start({"handler": handler})

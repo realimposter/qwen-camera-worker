@@ -1,5 +1,7 @@
 # Build and push the Qwen Camera Control RunPod worker to GitHub Container Registry.
-# Triggered on push to main branch.
+#
+# The image is ~30GB (includes baked-in model weights).
+# Uses jlumbroso/free-disk-space to free ~30GB on the GitHub Actions runner.
 
 name: Build RunPod Worker
 
@@ -20,6 +22,20 @@ jobs:
       packages: write
 
     steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Check available space
+        run: df -h
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -41,5 +57,3 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
