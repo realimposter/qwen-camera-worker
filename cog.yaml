@@ -4,10 +4,5 @@ build:
   system_packages:
     - "git"
   python_requirements: requirements.txt
-  run:
-    - "pip install huggingface_hub"
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen-Image-Edit-2509'); print('Downloaded base pipeline')\""
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('linoyts/Qwen-Image-Edit-Rapid-AIO'); print('Downloaded transformer')\""
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('dx8152/Qwen-Edit-2509-Multiple-angles'); print('Downloaded LoRA')\""
 
 predict: "predict.py:Predictor"
