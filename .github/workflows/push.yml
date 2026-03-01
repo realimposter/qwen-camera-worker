@@ -6,6 +6,11 @@ name: Push to Replicate
 on:
   push:
     branches: [main]
+    paths:
+      - "predict.py"
+      - "cog.yaml"
+      - "requirements.txt"
+      - "qwenimage/**"
   workflow_dispatch:
 
 jobs:
