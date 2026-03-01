@@ -1,39 +1,18 @@
 """
-Download and cache all model weights at Docker build time.
-This runs once during `docker build` so models are baked into the image.
+Download model weights to HF cache at Docker build time.
+Uses snapshot_download() to ONLY download files to disk — does NOT load
+models into memory, so this works within GitHub Actions' 7GB RAM limit.
 """
 
-import torch
-
-# Try built-in diffusers first
-try:
-    from diffusers import QwenImageEditPlusPipeline
-    from diffusers.models import QwenImageTransformer2DModel
-    print("[build] Using built-in diffusers QwenImage classes")
-except ImportError:
-    from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
-    from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
-    print("[build] Using vendored qwenimage classes")
-
-print("[build] Downloading transformer: linoyts/Qwen-Image-Edit-Rapid-AIO ...")
-transformer = QwenImageTransformer2DModel.from_pretrained(
-    "linoyts/Qwen-Image-Edit-Rapid-AIO",
-    subfolder="transformer",
-    torch_dtype=torch.bfloat16,
-)
+from huggingface_hub import snapshot_download
 
 print("[build] Downloading base pipeline: Qwen/Qwen-Image-Edit-2509 ...")
-pipe = QwenImageEditPlusPipeline.from_pretrained(
-    "Qwen/Qwen-Image-Edit-2509",
-    transformer=transformer,
-    torch_dtype=torch.bfloat16,
-)
+snapshot_download("Qwen/Qwen-Image-Edit-2509")
+
+print("[build] Downloading transformer: linoyts/Qwen-Image-Edit-Rapid-AIO ...")
+snapshot_download("linoyts/Qwen-Image-Edit-Rapid-AIO")
 
 print("[build] Downloading LoRA: dx8152/Qwen-Edit-2509-Multiple-angles ...")
-pipe.load_lora_weights(
-    "dx8152/Qwen-Edit-2509-Multiple-angles",
-    weight_name="镜头转换.safetensors",
-    adapter_name="angles",
-)
+snapshot_download("dx8152/Qwen-Edit-2509-Multiple-angles")
 
-print("[build] All models cached. Done!")
+print("[build] All models downloaded to HF cache. Done!")
