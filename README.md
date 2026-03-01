@@ -1,4 +1,4 @@
-# Qwen Camera Control — RunPod Serverless Worker
+# Qwen Camera Control — Replicate Model
 
 Replicates the [HF Space](https://huggingface.co/spaces/linoyts/Qwen-Image-Edit-Angles) for camera-aware image editing using the exact same models and settings.
 
@@ -10,42 +10,26 @@ Replicates the [HF Space](https://huggingface.co/spaces/linoyts/Qwen-Image-Edit-
 | Transformer | `linoyts/Qwen-Image-Edit-Rapid-AIO` | Lightning-distilled, 4-step |
 | LoRA | `dx8152/Qwen-Edit-2509-Multiple-angles` | Fused at **scale 1.25** |
 
-## How It Works
+## Deploy to Replicate
 
-- **Docker image** includes all model weights (~30GB) baked in at build time
-- **GitHub Action** auto-builds and pushes to `ghcr.io` on every push to `main`
-- **Cold starts** load models from local disk in ~30s (no network download)
-
-## Deploy
-
-### 1. Push to GitHub
-
-The GitHub Action auto-builds and pushes to:
-```
-ghcr.io/realimposter/qwen-camera-worker:latest
-```
-
-### 2. Create RunPod Serverless Endpoint
-
-1. Go to [RunPod Console → Serverless](https://www.runpod.io/console/serverless)
-2. **New Endpoint** → Image: `ghcr.io/realimposter/qwen-camera-worker:latest`
-3. **GPU**: A6000 or L40S (48GB VRAM)
-4. **Active Workers**: 0, **Max Workers**: 1+
-5. **Container Disk**: 50GB
-
-### 3. Test
+### 1. Install Cog
 
 ```bash
-curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
-  -H "Authorization: Bearer YOUR_RUNPOD_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": {
-      "image": "https://example.com/portrait.jpg",
-      "rotate_degrees": 45
-    }
-  }'
+sudo curl -o /usr/local/bin/cog -L https://github.com/replicate/cog/releases/latest/download/cog_$(uname -s)_$(uname -m)
+sudo chmod +x /usr/local/bin/cog
 ```
+
+### 2. Create a model on Replicate
+
+Go to [replicate.com/create](https://replicate.com/create) and create a new model (e.g. `realimposter/qwen-camera-control`).
+
+### 3. Push
+
+```bash
+cog push r8.im/realimposter/qwen-camera-control
+```
+
+Replicate builds the image on their servers (~15-20 min for first push). No local GPU needed.
 
 ## API
 
@@ -53,22 +37,15 @@ curl -X POST "https://api.runpod.ai/v2/YOUR_ENDPOINT_ID/runsync" \
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `image` | string | **required** | URL or base64 image |
+| `image` | file | **required** | Input image |
 | `rotate_degrees` | float | 0 | Positive=left, negative=right (±90°) |
 | `move_forward` | float | 0 | 0=none, 5=forward, 10=close-up |
 | `vertical_tilt` | float | 0 | -1=bird's-eye, 0=level, 1=worm's-eye |
 | `use_wide_angle` | bool | false | Wide-angle lens effect |
 | `prompt` | string | "" | Extra styling prompt |
-| `seed` | int | random | RNG seed |
+| `seed` | int | 0 | RNG seed (0=random) |
 | `num_inference_steps` | int | 4 | Denoising steps |
 
 ### Output
 
-```json
-{
-  "image_base64": "...",
-  "seed": 42,
-  "prompt": "将镜头向左旋转45度 Rotate the camera 45 degrees to the left.",
-  "format": "webp"
-}
-```
+Returns a URL to the output image (WebP format).

@@ -1,27 +1,15 @@
-# RunPod Serverless Worker: Qwen Camera Control
+# Replicate Cog requirements
 # Based on HF Space linoyts/Qwen-Image-Edit-Angles
 
-# PyTorch (CUDA 12.4 compatible)
-torch==2.8
-torchvision
-
-# Diffusers (latest git for QwenImage pipeline support)
 git+https://github.com/huggingface/diffusers.git
-
-# Transformers & model loading
 transformers
 accelerate
 safetensors
 sentencepiece
 peft
-
-# Quantization support
 torchao==0.11.0
-
-# RunPod SDK
-runpod
-
-# Image handling
+torch==2.8
+torchvision
 Pillow
 requests
 numpy
