@@ -4,5 +4,7 @@ build:
   system_packages:
     - "git"
   python_requirements: requirements.txt
+  run:
+    - "python download_models.py"
 
 predict: "predict.py:Predictor"
