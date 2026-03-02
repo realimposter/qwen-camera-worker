@@ -7,9 +7,11 @@ Clears HF cache to save disk space.
 
 import os
 import shutil
-from huggingface_hub import snapshot_download
 
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+
+from huggingface_hub import snapshot_download
+
 CACHE_DIR = "/src/hf_cache"
 
 print("[build] Downloading base pipeline: Qwen/Qwen-Image-Edit-2509 ...")
