@@ -8,10 +8,11 @@ build:
     - "git"
   python_requirements: requirements.txt
   run:
-    - "pip install huggingface_hub"
-    - "mkdir -p /src/weights"
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen-Image-Edit-2509', local_dir='/src/weights/base', local_dir_use_symlinks=False)\""
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('linoyts/Qwen-Image-Edit-Rapid-AIO', local_dir='/src/weights/transformer', local_dir_use_symlinks=False)\""
-    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('dx8152/Qwen-Edit-2509-Multiple-angles', local_dir='/src/weights/lora', local_dir_use_symlinks=False)\""
+    - "pip install huggingface_hub hf-transfer"
+    - "mkdir -p /src/weights /src/hf_cache"
+    - "HF_HUB_ENABLE_HF_TRANSFER=1 python -c \"from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen-Image-Edit-2509', cache_dir='/src/hf_cache', local_dir='/src/weights/base', local_dir_use_symlinks=False, ignore_patterns=['transformer/*'])\""
+    - "HF_HUB_ENABLE_HF_TRANSFER=1 python -c \"from huggingface_hub import snapshot_download; snapshot_download('linoyts/Qwen-Image-Edit-Rapid-AIO', cache_dir='/src/hf_cache', local_dir='/src/weights/transformer', local_dir_use_symlinks=False, ignore_patterns=['*transformer_weights.safetensors'])\""
+    - "HF_HUB_ENABLE_HF_TRANSFER=1 python -c \"from huggingface_hub import snapshot_download; snapshot_download('dx8152/Qwen-Edit-2509-Multiple-angles', cache_dir='/src/hf_cache', local_dir='/src/weights/lora', local_dir_use_symlinks=False)\""
+    - "rm -rf /src/hf_cache"
 
 predict: "predict.py:Predictor"
