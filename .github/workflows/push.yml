@@ -44,4 +44,19 @@ jobs:
       - name: Push to Replicate
         run: |
           # Use DOCKER_BUILDKIT with no cache to avoid filling disk with layers
-          DOCKER_BUILDKIT=1 cog push r8.im/realimposter/qwen-camera-control
+          # Add retry logic because pushing 35GB image layers can cause random TLS timeouts to r8.im
+          SUCCESS=false
+          for i in 1 2 3; do
+            echo "Attempt $i: Pushing to Replicate..."
+            if DOCKER_BUILDKIT=1 cog push r8.im/realimposter/qwen-camera-control; then
+              SUCCESS=true
+              break
+            fi
+            echo "Push failed, retrying in 15 seconds..."
+            sleep 15
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "Failed to push image after 3 attempts."
+            exit 1
+          fi
