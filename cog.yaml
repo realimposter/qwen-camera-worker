@@ -1,8 +1,17 @@
+# Replicate Cog: Qwen Camera Control (Multi-Angle)
+# Bakes model weights into the image for fast cold starts (recommended by Replicate).
+
 build:
   gpu: true
   python_version: "3.11"
   system_packages:
     - "git"
   python_requirements: requirements.txt
+  run:
+    - "pip install huggingface_hub"
+    - "mkdir -p /src/weights"
+    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen-Image-Edit-2509', local_dir='/src/weights/base', local_dir_use_symlinks=False)\""
+    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('linoyts/Qwen-Image-Edit-Rapid-AIO', local_dir='/src/weights/transformer', local_dir_use_symlinks=False)\""
+    - "python -c \"from huggingface_hub import snapshot_download; snapshot_download('dx8152/Qwen-Edit-2509-Multiple-angles', local_dir='/src/weights/lora', local_dir_use_symlinks=False)\""
 
 predict: "predict.py:Predictor"

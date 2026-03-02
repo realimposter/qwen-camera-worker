@@ -1,5 +1,6 @@
 # Build and push Cog model to Replicate on every push to main.
 # Uses replicate/setup-cog action which handles Docker + Cog installation.
+# Uses jlumbroso/free-disk-space to reclaim ~30GB for the ~25GB model weights.
 
 name: Push to Replicate
 
@@ -16,6 +17,7 @@ on:
 jobs:
   push:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
@@ -25,8 +27,11 @@ jobs:
           dotnet: true
           haskell: true
           large-packages: true
-          docker-images: false
+          docker-images: true
           swap-storage: true
+
+      - name: Check disk space
+        run: df -h
 
       - name: Checkout
         uses: actions/checkout@v4

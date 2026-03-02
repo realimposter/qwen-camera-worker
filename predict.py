@@ -6,9 +6,11 @@ Replicates the exact HF Space setup from linoyts/Qwen-Image-Edit-Angles:
   - Transformer: linoyts/Qwen-Image-Edit-Rapid-AIO (Lightning-distilled, 4-step)
   - LoRA: dx8152/Qwen-Edit-2509-Multiple-angles (fused at scale 1.25)
   - Bilingual Chinese+English camera prompt construction
+
+Weights are baked into the image at /src/weights/ for fast cold starts.
 """
 
-import io
+import os
 import random
 import time
 import tempfile
@@ -18,6 +20,14 @@ import torch
 from PIL import Image
 from cog import BasePredictor, Input, Path
 
+# Baked weight paths (downloaded during cog build)
+WEIGHTS_DIR = "/src/weights"
+BASE_MODEL_PATH = os.path.join(WEIGHTS_DIR, "base")
+TRANSFORMER_PATH = os.path.join(WEIGHTS_DIR, "transformer")
+LORA_PATH = os.path.join(WEIGHTS_DIR, "lora")
+
+LORA_WEIGHT_NAME = "镜头转换.safetensors"
+LORA_SCALE = 1.25
 MAX_SEED = np.iinfo(np.int32).max
 
 # =============================================================================
@@ -67,7 +77,7 @@ def build_camera_prompt(
 
 class Predictor(BasePredictor):
     def setup(self):
-        """Load the model into memory for fast predictions."""
+        """Load pipeline from baked weights, swap transformer, and fuse LoRA."""
         try:
             from diffusers import QwenImageEditPlusPipeline
             from diffusers.models import QwenImageTransformer2DModel
@@ -75,29 +85,29 @@ class Predictor(BasePredictor):
             from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
             from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
 
-        print("[setup] Loading transformer...")
+        print("[setup] Loading transformer from baked weights...")
         start = time.time()
         transformer = QwenImageTransformer2DModel.from_pretrained(
-            "linoyts/Qwen-Image-Edit-Rapid-AIO",
+            TRANSFORMER_PATH,
             subfolder="transformer",
             torch_dtype=torch.bfloat16,
         )
 
         print(f"[setup] Loading pipeline... ({time.time() - start:.1f}s)")
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
-            "Qwen/Qwen-Image-Edit-2509",
+            BASE_MODEL_PATH,
             transformer=transformer,
             torch_dtype=torch.bfloat16,
         ).to("cuda")
 
         print("[setup] Loading and fusing LoRA at scale 1.25...")
         self.pipe.load_lora_weights(
-            "dx8152/Qwen-Edit-2509-Multiple-angles",
-            weight_name="镜头转换.safetensors",
+            LORA_PATH,
+            weight_name=LORA_WEIGHT_NAME,
             adapter_name="angles",
         )
         self.pipe.set_adapters(["angles"], adapter_weights=[1.0])
-        self.pipe.fuse_lora(adapter_names=["angles"], lora_scale=1.25)
+        self.pipe.fuse_lora(adapter_names=["angles"], lora_scale=LORA_SCALE)
         self.pipe.unload_lora_weights()
 
         print(f"[setup] Ready! Total: {time.time() - start:.1f}s")
@@ -154,7 +164,6 @@ class Predictor(BasePredictor):
         )
 
         if camera_prompt == "no camera movement" and not prompt:
-            # Just return the original image if nothing to do
             camera_prompt = "keep the same camera angle"
 
         if prompt:
