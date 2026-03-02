@@ -1,6 +1,6 @@
 # Build and push Cog model to Replicate on every push to main.
 # Uses replicate/setup-cog action which handles Docker + Cog installation.
-# Uses jlumbroso/free-disk-space to reclaim ~30GB for the ~25GB model weights.
+# Aggressively frees disk (~50GB+) to fit the ~25GB model weights + Docker layers.
 
 name: Push to Replicate
 
@@ -30,6 +30,30 @@ jobs:
           docker-images: true
           swap-storage: true
 
+      - name: Extra disk cleanup
+        run: |
+          # Remove additional pre-installed tools that free-disk-space may miss
+          sudo rm -rf /usr/local/lib/heroku || true
+          sudo rm -rf /usr/local/share/chromium || true
+          sudo rm -rf /usr/local/share/powershell || true
+          sudo rm -rf /usr/local/share/vcpkg || true
+          sudo rm -rf /usr/local/lib/node_modules || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /opt/hostedtoolcache/go || true
+          sudo rm -rf /opt/hostedtoolcache/node || true
+          sudo rm -rf /opt/hostedtoolcache/Python || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf /usr/share/miniconda || true
+          sudo rm -rf /usr/share/az_* || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/graalvm || true
+          sudo rm -rf /usr/local/.ghcup || true
+          # Clear runner diagnostics/logs that can fill up
+          sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          # Clear apt cache
+          sudo apt-get clean
+          docker system prune -af --volumes || true
+
       - name: Check disk space
         run: df -h
 
@@ -42,4 +66,6 @@ jobs:
           token: ${{ secrets.REPLICATE_API_TOKEN }}
 
       - name: Push to Replicate
-        run: cog push r8.im/realimposter/qwen-camera-control
+        run: |
+          # Use DOCKER_BUILDKIT with no cache to avoid filling disk with layers
+          DOCKER_BUILDKIT=1 cog push r8.im/realimposter/qwen-camera-control
