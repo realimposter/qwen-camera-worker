@@ -45,4 +45,4 @@ jobs:
         run: |
           # Use DOCKER_BUILDKIT with no cache to avoid filling disk with layers
           # Use COG_PUSH_OCI=1 to avoid TLS handshake timeouts on large layers
-          COG_PUSH_OCI=1 DOCKER_BUILDKIT=1 cog push r8.im/realimposter/qwen-camera-control --hardware=gpu-a100-large
+          COG_PUSH_OCI=1 DOCKER_BUILDKIT=1 cog push r8.im/realimposter/qwen-camera-control
