@@ -9,5 +9,6 @@ sentencepiece
 peft
 torchao==0.8.0
 Pillow
+torchvision
 requests
 numpy
