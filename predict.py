@@ -102,8 +102,7 @@ class Predictor(BasePredictor):
             transformer=transformer,
             torch_dtype=torch.bfloat16,
             local_files_only=True,
-        )
-        self.pipe.enable_model_cpu_offload()
+        ).to("cuda")
 
         print("[setup] Cleaning up memory before LoRA fusion...", flush=True)
         gc.collect()
