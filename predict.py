@@ -85,22 +85,30 @@ class Predictor(BasePredictor):
             from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
             from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
 
-        print("[setup] Loading transformer from baked weights...")
+        import gc
+
+        print("[setup] Loading transformer from baked weights...", flush=True)
         start = time.time()
         transformer = QwenImageTransformer2DModel.from_pretrained(
             TRANSFORMER_PATH,
             subfolder="transformer",
             torch_dtype=torch.bfloat16,
+            local_files_only=True,
         )
 
-        print(f"[setup] Loading pipeline... ({time.time() - start:.1f}s)")
+        print(f"[setup] Loading pipeline... ({time.time() - start:.1f}s)", flush=True)
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
             BASE_MODEL_PATH,
             transformer=transformer,
             torch_dtype=torch.bfloat16,
+            local_files_only=True,
         ).to("cuda")
 
-        print("[setup] Loading and fusing LoRA at scale 1.25...")
+        print("[setup] Cleaning up memory before LoRA fusion...", flush=True)
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        print("[setup] Loading and fusing LoRA at scale 1.25...", flush=True)
         self.pipe.load_lora_weights(
             LORA_PATH,
             weight_name=LORA_WEIGHT_NAME,
@@ -110,7 +118,11 @@ class Predictor(BasePredictor):
         self.pipe.fuse_lora(adapter_names=["angles"], lora_scale=LORA_SCALE)
         self.pipe.unload_lora_weights()
 
-        print(f"[setup] Ready! Total: {time.time() - start:.1f}s")
+        print("[setup] Final memory cleanup...", flush=True)
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        print(f"[setup] Ready! Total: {time.time() - start:.1f}s", flush=True)
 
     def predict(
         self,
