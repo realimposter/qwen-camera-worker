@@ -1,14 +1,14 @@
 # Replicate Cog requirements
 # Based on HF Space linoyts/Qwen-Image-Edit-Angles
+# Pinned to known-working commits (2026-03-03) to prevent main-branch breakage
 
-git+https://github.com/huggingface/diffusers.git
-git+https://github.com/huggingface/transformers.git
+git+https://github.com/huggingface/diffusers.git@1fe688a651bc078326082b8927f8fbdd6cefeef0
+git+https://github.com/huggingface/transformers.git@9599bfbb97a6cc009f30817a6d40ae42b5ffaa58
 accelerate
 safetensors
 sentencepiece
 peft
-torchao==0.8.0
-Pillow
 torchvision
+Pillow
 requests
 numpy
