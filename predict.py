@@ -96,19 +96,17 @@ class Predictor(BasePredictor):
             local_files_only=True,
         )
 
-        print(f"[setup] Loading pipeline... ({time.time() - start:.1f}s)", flush=True)
+        # Load pipeline on CPU first (model is ~44GB, exceeds A40's 44.4GB VRAM)
+        print(f"[setup] Loading pipeline on CPU... ({time.time() - start:.1f}s)", flush=True)
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
             BASE_MODEL_PATH,
             transformer=transformer,
             torch_dtype=torch.bfloat16,
             local_files_only=True,
-        ).to("cuda")
+        )
 
-        print("[setup] Cleaning up memory before LoRA fusion...", flush=True)
-        gc.collect()
-        torch.cuda.empty_cache()
-
-        print("[setup] Loading and fusing LoRA at scale 1.25...", flush=True)
+        # Fuse LoRA on CPU (tensor additions are fast on CPU, no GPU transfers needed)
+        print("[setup] Loading and fusing LoRA at scale 1.25 (on CPU)...", flush=True)
         self.pipe.load_lora_weights(
             LORA_PATH,
             weight_name=LORA_WEIGHT_NAME,
@@ -118,9 +116,15 @@ class Predictor(BasePredictor):
         self.pipe.fuse_lora(adapter_names=["angles"], lora_scale=LORA_SCALE)
         self.pipe.unload_lora_weights()
 
-        print("[setup] Final memory cleanup...", flush=True)
+        # Clean up CPU memory before enabling GPU offloading
+        print("[setup] Cleaning up memory...", flush=True)
+        import gc
         gc.collect()
-        torch.cuda.empty_cache()
+
+        # Enable CPU offloading: keeps weights in CPU RAM, moves each component
+        # to GPU only during its forward pass. This avoids OOM on A40 (44GB).
+        print("[setup] Enabling model CPU offloading for inference...", flush=True)
+        self.pipe.enable_model_cpu_offload()
 
         print(f"[setup] Ready! Total: {time.time() - start:.1f}s", flush=True)
 
