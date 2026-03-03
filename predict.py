@@ -170,6 +170,14 @@ class Predictor(BasePredictor):
         # Load input image
         input_image = Image.open(str(image)).convert("RGB")
 
+        # Ensure image dimensions are divisible by 16 (required by many transformer/VAE models)
+        w, h = input_image.size
+        new_w = (w // 16) * 16
+        new_h = (h // 16) * 16
+        if w != new_w or h != new_h:
+            print(f"[predict] Resizing input image from {w}x{h} to {new_w}x{new_h} to avoid VAE/tensor errors", flush=True)
+            input_image = input_image.resize((new_w, new_h), Image.LANCZOS)
+
         # Build bilingual camera prompt
         camera_prompt = build_camera_prompt(
             rotate_degrees, move_forward, vertical_tilt, use_wide_angle
