@@ -2,7 +2,7 @@
 # Based on HF Space linoyts/Qwen-Image-Edit-Angles
 
 git+https://github.com/huggingface/diffusers.git
-transformers
+git+https://github.com/huggingface/transformers.git
 accelerate
 safetensors
 sentencepiece
