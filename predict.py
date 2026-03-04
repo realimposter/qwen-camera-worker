@@ -8,8 +8,11 @@ Replicates the exact HF Space setup from linoyts/Qwen-Image-Edit-Angles:
   - Bilingual Chinese+English camera prompt construction
 
 Weights are baked into the image at /src/weights/ for fast cold starts.
+
+Requires A100 80GB GPU (set in Replicate dashboard).
 """
 
+import gc
 import os
 import random
 import time
@@ -77,15 +80,13 @@ def build_camera_prompt(
 
 class Predictor(BasePredictor):
     def setup(self):
-        """Load pipeline from baked weights, swap transformer, and fuse LoRA."""
+        """Load pipeline onto GPU, fuse LoRA, and compile transformer for speed."""
         try:
             from diffusers import QwenImageEditPlusPipeline
             from diffusers.models import QwenImageTransformer2DModel
         except ImportError:
             from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
             from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
-
-        import gc
 
         print("[setup] Loading transformer from baked weights...", flush=True)
         start = time.time()
@@ -96,17 +97,15 @@ class Predictor(BasePredictor):
             local_files_only=True,
         )
 
-        # Load pipeline on CPU first (model is ~44GB, exceeds A40's 44.4GB VRAM)
-        print(f"[setup] Loading pipeline on CPU... ({time.time() - start:.1f}s)", flush=True)
+        print(f"[setup] Loading pipeline... ({time.time() - start:.1f}s)", flush=True)
         self.pipe = QwenImageEditPlusPipeline.from_pretrained(
             BASE_MODEL_PATH,
             transformer=transformer,
             torch_dtype=torch.bfloat16,
             local_files_only=True,
-        )
+        ).to("cuda")
 
-        # Fuse LoRA on CPU (tensor additions are fast on CPU, no GPU transfers needed)
-        print("[setup] Loading and fusing LoRA at scale 1.25 (on CPU)...", flush=True)
+        print("[setup] Loading and fusing LoRA at scale 1.25...", flush=True)
         self.pipe.load_lora_weights(
             LORA_PATH,
             weight_name=LORA_WEIGHT_NAME,
@@ -116,15 +115,30 @@ class Predictor(BasePredictor):
         self.pipe.fuse_lora(adapter_names=["angles"], lora_scale=LORA_SCALE)
         self.pipe.unload_lora_weights()
 
-        # Clean up CPU memory before enabling GPU offloading
-        print("[setup] Cleaning up memory...", flush=True)
-        import gc
         gc.collect()
+        torch.cuda.empty_cache()
 
-        # Enable CPU offloading: keeps weights in CPU RAM, moves each component
-        # to GPU only during its forward pass. This avoids OOM on A40 (44GB).
-        print("[setup] Enabling model CPU offloading for inference...", flush=True)
-        self.pipe.enable_model_cpu_offload()
+        # Compile the transformer for faster inference (~2-3x speedup)
+        print("[setup] Compiling transformer with torch.compile...", flush=True)
+        self.pipe.transformer = torch.compile(
+            self.pipe.transformer,
+            mode="max-autotune-no-cudagraphs",
+        )
+
+        # Warmup: run a dummy forward pass to trigger compilation
+        print("[setup] Running warmup inference for torch.compile...", flush=True)
+        warmup_image = Image.new("RGB", (512, 512), color=(128, 128, 128))
+        _ = self.pipe(
+            image=[warmup_image],
+            prompt="no camera movement",
+            num_inference_steps=1,
+            generator=torch.Generator(device="cuda").manual_seed(42),
+            true_cfg_scale=1.0,
+            num_images_per_prompt=1,
+        )
+
+        gc.collect()
+        torch.cuda.empty_cache()
 
         print(f"[setup] Ready! Total: {time.time() - start:.1f}s", flush=True)
 
